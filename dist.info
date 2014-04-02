@@ -1,0 +1,10 @@
+--- This file is part of Flymir LuaDist project
+
+name = "glfw"
+version = "3.0.4"
+
+desc = "A multi-platform library for OpenGL, window and input"
+author = "Camilla Berglund"
+license = "MIT/X11"
+url = "http://www.glfw.org/"
+maintainer = "Tai Chi Minh Ralph Eastwood"
