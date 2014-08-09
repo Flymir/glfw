@@ -48,17 +48,23 @@
 // The Xkb extension provides improved keyboard support
 #include <X11/XKBlib.h>
 
+#include "posix_tls.h"
+
 #if defined(_GLFW_GLX)
  #define _GLFW_X11_CONTEXT_VISUAL window->glx.visual
- #include "glx_platform.h"
+ #include "glx_context.h"
 #elif defined(_GLFW_EGL)
  #define _GLFW_X11_CONTEXT_VISUAL window->egl.visual
  #define _GLFW_EGL_NATIVE_WINDOW  window->x11.handle
  #define _GLFW_EGL_NATIVE_DISPLAY _glfw.x11.display
- #include "egl_platform.h"
+ #include "egl_context.h"
 #else
  #error "No supported context creation API selected"
 #endif
+
+#include "posix_time.h"
+#include "linux_joystick.h"
+#include "xkb_unicode.h"
 
 #define _GLFW_PLATFORM_WINDOW_STATE         _GLFWwindowX11  x11
 #define _GLFW_PLATFORM_LIBRARY_WINDOW_STATE _GLFWlibraryX11 x11
@@ -117,9 +123,12 @@ typedef struct _GLFWlibraryX11
     Atom            NET_WM_PID;
     Atom            NET_WM_PING;
     Atom            NET_WM_STATE;
+    Atom            NET_WM_STATE_ABOVE;
     Atom            NET_WM_STATE_FULLSCREEN;
     Atom            NET_WM_BYPASS_COMPOSITOR;
     Atom            NET_ACTIVE_WINDOW;
+    Atom            NET_FRAME_EXTENTS;
+    Atom            NET_REQUEST_FRAME_EXTENTS;
     Atom            MOTIF_WM_HINTS;
 
     // Xdnd (drag and drop) atoms
@@ -168,6 +177,8 @@ typedef struct _GLFWlibraryX11
     } randr;
 
     struct {
+        GLboolean   available;
+        GLboolean   detectable;
         int         majorOpcode;
         int         eventBase;
         int         errorBase;
@@ -196,28 +207,12 @@ typedef struct _GLFWlibraryX11
     } saver;
 
     struct {
-        GLboolean   monotonic;
-        double      resolution;
-        uint64_t    base;
-    } timer;
-
-    struct {
         char*       string;
     } selection;
 
     struct {
         Window      source;
     } xdnd;
-
-    struct {
-        int         present;
-        int         fd;
-        float*      axes;
-        int         axisCount;
-        unsigned char* buttons;
-        int         buttonCount;
-        char*       name;
-    } joystick[GLFW_JOYSTICK_LAST + 1];
 
 } _GLFWlibraryX11;
 
@@ -247,9 +242,6 @@ typedef struct _GLFWcursorX11
 // Prototypes for platform specific internal functions
 //========================================================================
 
-// Time
-void _glfwInitTimer(void);
-
 // Gamma
 void _glfwInitGammaRamp(void);
 
@@ -257,17 +249,12 @@ void _glfwInitGammaRamp(void);
 GLboolean _glfwSetVideoMode(_GLFWmonitor* monitor, const GLFWvidmode* desired);
 void _glfwRestoreVideoMode(_GLFWmonitor* monitor);
 
-// Joystick input
-void _glfwInitJoysticks(void);
-void _glfwTerminateJoysticks(void);
-
-// Unicode support
-long _glfwKeySym2Unicode(KeySym keysym);
-
 // Clipboard handling
 void _glfwHandleSelectionClear(XEvent* event);
 void _glfwHandleSelectionRequest(XEvent* event);
 void _glfwPushSelectionToManager(_GLFWwindow* window);
+
+Cursor _glfwCreateCursor(const GLFWimage* image, int xhot, int yhot);
 
 // Window support
 _GLFWwindow* _glfwFindWindowByHandle(Window handle);

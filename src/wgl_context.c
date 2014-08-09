@@ -181,8 +181,7 @@ static GLboolean choosePixelFormat(_GLFWwindow* window,
         {
             // Get pixel format attributes through WGL_ARB_pixel_format
             if (!getPixelFormatAttrib(window, n, WGL_SUPPORT_OPENGL_ARB) ||
-                !getPixelFormatAttrib(window, n, WGL_DRAW_TO_WINDOW_ARB) ||
-                !getPixelFormatAttrib(window, n, WGL_DOUBLE_BUFFER_ARB))
+                !getPixelFormatAttrib(window, n, WGL_DRAW_TO_WINDOW_ARB))
             {
                 continue;
             }
@@ -213,13 +212,20 @@ static GLboolean choosePixelFormat(_GLFWwindow* window,
             u->accumAlphaBits = getPixelFormatAttrib(window, n, WGL_ACCUM_ALPHA_BITS_ARB);
 
             u->auxBuffers = getPixelFormatAttrib(window, n, WGL_AUX_BUFFERS_ARB);
-            u->stereo = getPixelFormatAttrib(window, n, WGL_STEREO_ARB);
+
+            if (getPixelFormatAttrib(window, n, WGL_STEREO_ARB))
+                u->stereo = GL_TRUE;
+            if (getPixelFormatAttrib(window, n, WGL_DOUBLE_BUFFER_ARB))
+                u->doublebuffer = GL_TRUE;
 
             if (window->wgl.ARB_multisample)
                 u->samples = getPixelFormatAttrib(window, n, WGL_SAMPLES_ARB);
 
             if (window->wgl.ARB_framebuffer_sRGB)
-                u->sRGB = getPixelFormatAttrib(window, n, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB);
+            {
+                if (getPixelFormatAttrib(window, n, WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB))
+                    u->sRGB = GL_TRUE;
+            }
         }
         else
         {
@@ -236,8 +242,7 @@ static GLboolean choosePixelFormat(_GLFWwindow* window,
             }
 
             if (!(pfd.dwFlags & PFD_DRAW_TO_WINDOW) ||
-                !(pfd.dwFlags & PFD_SUPPORT_OPENGL) ||
-                !(pfd.dwFlags & PFD_DOUBLEBUFFER))
+                !(pfd.dwFlags & PFD_SUPPORT_OPENGL))
             {
                 continue;
             }
@@ -265,7 +270,11 @@ static GLboolean choosePixelFormat(_GLFWwindow* window,
             u->accumAlphaBits = pfd.cAccumAlphaBits;
 
             u->auxBuffers = pfd.cAuxBuffers;
-            u->stereo = (pfd.dwFlags & PFD_STEREO) ? GL_TRUE : GL_FALSE;
+
+            if (pfd.dwFlags & PFD_STEREO)
+                u->stereo = GL_TRUE;
+            if (pfd.dwFlags & PFD_DOUBLEBUFFER)
+                u->doublebuffer = GL_TRUE;
         }
 
         u->wgl = n;
@@ -306,22 +315,15 @@ static GLboolean choosePixelFormat(_GLFWwindow* window,
 //
 int _glfwInitContextAPI(void)
 {
+    if (!_glfwInitTLS())
+        return GL_FALSE;
+
     _glfw.wgl.opengl32.instance = LoadLibraryW(L"opengl32.dll");
     if (!_glfw.wgl.opengl32.instance)
     {
         _glfwInputError(GLFW_PLATFORM_ERROR, "Failed to load opengl32.dll");
         return GL_FALSE;
     }
-
-    _glfw.wgl.current = TlsAlloc();
-    if (_glfw.wgl.current == TLS_OUT_OF_INDEXES)
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "WGL: Failed to allocate TLS index");
-        return GL_FALSE;
-    }
-
-    _glfw.wgl.hasTLS = GL_TRUE;
 
     return GL_TRUE;
 }
@@ -330,11 +332,10 @@ int _glfwInitContextAPI(void)
 //
 void _glfwTerminateContextAPI(void)
 {
-    if (_glfw.wgl.hasTLS)
-        TlsFree(_glfw.wgl.current);
-
     if (_glfw.wgl.opengl32.instance)
         FreeLibrary(_glfw.wgl.opengl32.instance);
+
+    _glfwTerminateTLS();
 }
 
 #define setWGLattrib(attribName, attribValue) \
@@ -570,6 +571,18 @@ int _glfwAnalyzeContext(const _GLFWwindow* window,
         }
     }
 
+    if (fbconfig->sRGB)
+    {
+        // We want sRGB, but can we get it?
+        // sRGB is not a hard constraint, so otherwise we just don't care
+
+        if (window->wgl.ARB_framebuffer_sRGB && window->wgl.ARB_pixel_format)
+        {
+            // We appear to have both the extension and the means to ask for it
+            required = GL_TRUE;
+        }
+    }
+
     if (required)
         return _GLFW_RECREATION_REQUIRED;
 
@@ -588,12 +601,7 @@ void _glfwPlatformMakeContextCurrent(_GLFWwindow* window)
     else
         wglMakeCurrent(NULL, NULL);
 
-    TlsSetValue(_glfw.wgl.current, window);
-}
-
-_GLFWwindow* _glfwPlatformGetCurrentContext(void)
-{
-    return TlsGetValue(_glfw.wgl.current);
+    _glfwSetCurrentContext(window);
 }
 
 void _glfwPlatformSwapBuffers(_GLFWwindow* window)

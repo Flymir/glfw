@@ -32,12 +32,20 @@ else()
     option(GLFW_USE_EGL "Use EGL for context creation" OFF)
 endif()
 
+if (UNIX AND NOT APPLE)
+    option(GLFW_USE_WAYLAND "Use Wayland for context creation (implies EGL as well)" OFF)
+endif()
+
 if (MSVC)
     option(USE_MSVC_RUNTIME_LIBRARY_DLL "Use MSVC runtime library DLL" ON)
 endif()
 
 if (BUILD_SHARED_LIBS)
     set(_GLFW_BUILD_DLL 1)
+endif()
+
+if (GLFW_USE_WAYLAND)
+    set(GLFW_USE_EGL ON)
 endif()
 
 if (GLFW_USE_EGL)
@@ -137,8 +145,13 @@ elseif (APPLE)
     set(_GLFW_NSGL 1)
     message(STATUS "Using NSGL for context creation")
 elseif (UNIX)
-    set(_GLFW_X11 1)
-    message(STATUS "Using X11 for window creation")
+    if (GLFW_USE_WAYLAND)
+        set(_GLFW_WAYLAND 1)
+        message(STATUS "Using Wayland for window creation")
+    else()
+        set(_GLFW_X11 1)
+        message(STATUS "Using X11 for window creation")
+    endif()
 
     if (GLFW_USE_EGL)
         set(_GLFW_EGL 1)
@@ -176,7 +189,7 @@ if (_GLFW_WIN32)
     # the inclusion of stddef.h (by glfw3.h), which is itself included before
     # win32_platform.h.  We define them here until a saner solution can be found
     # NOTE: MinGW-w64 and Visual C++ do /not/ need this hack.
-    if (CMAKE_COMPILER_IS_GNUC)
+    if (${CMAKE_C_COMPILER_ID} STREQUAL "GNU")
         add_definitions(-DUNICODE -DWINVER=0x0501)
     endif()
 endif()
@@ -190,7 +203,6 @@ if (_GLFW_WGL)
 
     list(APPEND glfw_INCLUDE_DIRS ${OPENGL_INCLUDE_DIR})
     list(APPEND glfw_LIBRARIES ${OPENGL_gl_LIBRARY})
-
 endif()
 
 #--------------------------------------------------------------------
@@ -278,6 +290,29 @@ if (_GLFW_X11)
     list(APPEND glfw_LIBRARIES ${X11_Xcursor_LIB})
     set(GLFW_PKG_DEPS "${GLFW_PKG_DEPS} xcursor")
 
+endif()
+
+#--------------------------------------------------------------------
+# Use Wayland for window creation
+#--------------------------------------------------------------------
+if (_GLFW_WAYLAND)
+    find_package(Wayland REQUIRED)
+    set(GLFW_PKG_DEPS "${GLFW_PKG_DEPS} wayland-egl")
+
+    list(APPEND glfw_INCLUDE_DIRS ${WAYLAND_INCLUDE_DIR})
+    list(APPEND glfw_LIBRARIES ${WAYLAND_LIBRARIES} -pthread)
+
+    find_package(XKBCommon REQUIRED)
+    set(GLFW_PKG_DEPS "${GLFW_PKG_DEPS} xkbcommon")
+    list(APPEND glfw_INCLUDE_DIRS ${XKBCOMMON_INCLUDE_DIRS})
+    list(APPEND glfw_LIBRARIES ${XKBCOMMON_LIBRARY})
+
+    find_library(MATH_LIBRARY m)
+    mark_as_advanced(MATH_LIBRARY)
+    if (MATH_LIBRARY)
+        list(APPEND glfw_LIBRARIES ${MATH_LIBRARY})
+        set(GLFW_PKG_LIBS "${GLFW_PKG_LIBS} -lm")
+    endif()
 endif()
 
 #--------------------------------------------------------------------
@@ -401,8 +436,10 @@ endif()
 #--------------------------------------------------------------------
 # Create generated files
 #--------------------------------------------------------------------
-configure_file(${GLFW_SOURCE_DIR}/docs/Doxyfile.in
-               ${GLFW_BINARY_DIR}/docs/Doxyfile @ONLY)
+if (GLFW_BUILD_DOCS)
+    configure_file(${GLFW_SOURCE_DIR}/docs/Doxyfile.in
+                   ${GLFW_BINARY_DIR}/docs/Doxyfile @ONLY)
+endif()
 
 configure_file(${GLFW_SOURCE_DIR}/src/glfw_config.h.in
                ${GLFW_BINARY_DIR}/src/glfw_config.h @ONLY)
@@ -414,7 +451,7 @@ configure_file(${GLFW_SOURCE_DIR}/src/glfwConfigVersion.cmake.in
                ${GLFW_BINARY_DIR}/src/glfwConfigVersion.cmake @ONLY)
 
 configure_file(${GLFW_SOURCE_DIR}/src/glfw3.pc.in
-                ${GLFW_BINARY_DIR}/src/glfw3.pc @ONLY)
+               ${GLFW_BINARY_DIR}/src/glfw3.pc @ONLY)
 
 #--------------------------------------------------------------------
 # Add subdirectories

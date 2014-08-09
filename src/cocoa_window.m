@@ -127,7 +127,7 @@ static NSRect convertRectToBacking(_GLFWwindow* window, NSRect contentRect)
     _GLFWwindow* window;
 }
 
-- (id)initWithGlfwWindow:(_GLFWwindow *)initWndow;
+- (id)initWithGlfwWindow:(_GLFWwindow *)initWindow;
 
 @end
 
@@ -605,30 +605,39 @@ static int translateKey(unsigned int key)
 {
     const int key = translateKey([event keyCode]);
     const int mods = translateFlags([event modifierFlags]);
+
     _glfwInputKey(window, key, [event keyCode], GLFW_PRESS, mods);
 
     NSString* characters = [event characters];
     NSUInteger i, length = [characters length];
+    const int plain = !(mods & GLFW_MOD_SUPER);
 
     for (i = 0;  i < length;  i++)
-        _glfwInputChar(window, [characters characterAtIndex:i]);
+        _glfwInputChar(window, [characters characterAtIndex:i], mods, plain);
 }
 
 - (void)flagsChanged:(NSEvent *)event
 {
     int action;
-    unsigned int newModifierFlags =
+    const unsigned int modifierFlags =
         [event modifierFlags] & NSDeviceIndependentModifierFlagsMask;
+    const int key = translateKey([event keyCode]);
+    const int mods = translateFlags(modifierFlags);
 
-    if (newModifierFlags > window->ns.modifierFlags)
+    if (modifierFlags == window->ns.modifierFlags)
+    {
+        if (window->keys[key] == GLFW_PRESS)
+            action = GLFW_RELEASE;
+        else
+            action = GLFW_PRESS;
+    }
+    else if (modifierFlags > window->ns.modifierFlags)
         action = GLFW_PRESS;
     else
         action = GLFW_RELEASE;
 
-    window->ns.modifierFlags = newModifierFlags;
+    window->ns.modifierFlags = modifierFlags;
 
-    const int key = translateKey([event keyCode]);
-    const int mods = translateFlags([event modifierFlags]);
     _glfwInputKey(window, key, [event keyCode], action, mods);
 }
 
@@ -918,6 +927,14 @@ static GLboolean initializeAppKit(void)
 static GLboolean createWindow(_GLFWwindow* window,
                               const _GLFWwndconfig* wndconfig)
 {
+    window->ns.delegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
+    if (window->ns.delegate == nil)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "Cocoa: Failed to create window delegate");
+        return GL_FALSE;
+    }
+
     unsigned int styleMask = 0;
 
     if (wndconfig->monitor || !wndconfig->decorated)
@@ -956,6 +973,9 @@ static GLboolean createWindow(_GLFWwindow* window,
             [window->ns.object setCollectionBehavior:NSWindowCollectionBehaviorFullScreenPrimary];
     }
 #endif /*MAC_OS_X_VERSION_MAX_ALLOWED*/
+
+    if (wndconfig->floating)
+        [window->ns.object setLevel:NSFloatingWindowLevel];
 
     [window->ns.object setTitle:[NSString stringWithUTF8String:wndconfig->title]];
     [window->ns.object setContentView:window->ns.view];
@@ -997,14 +1017,6 @@ int _glfwPlatformCreateWindow(_GLFWwindow* window,
         }
 
         [NSApp setDelegate:_glfw.ns.delegate];
-    }
-
-    window->ns.delegate = [[GLFWWindowDelegate alloc] initWithGlfwWindow:window];
-    if (window->ns.delegate == nil)
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "Cocoa: Failed to create window delegate");
-        return GL_FALSE;
     }
 
     if (!createWindow(window, wndconfig))
@@ -1089,6 +1101,25 @@ void _glfwPlatformGetFramebufferSize(_GLFWwindow* window, int* width, int* heigh
         *width = (int) fbRect.size.width;
     if (height)
         *height = (int) fbRect.size.height;
+}
+
+void _glfwPlatformGetWindowFrameSize(_GLFWwindow* window,
+                                     int* left, int* top,
+                                     int* right, int* bottom)
+{
+    const NSRect contentRect = [window->ns.view frame];
+    const NSRect frameRect = [window->ns.object frameRectForContentRect:contentRect];
+
+    if (left)
+        *left = contentRect.origin.x - frameRect.origin.x;
+    if (top)
+        *top = frameRect.origin.y + frameRect.size.height -
+               contentRect.origin.y - contentRect.size.height;
+    if (right)
+        *right = frameRect.origin.x + frameRect.size.width -
+                 contentRect.origin.x - contentRect.size.width;
+    if (bottom)
+        *bottom = contentRect.origin.y - frameRect.origin.y;
 }
 
 void _glfwPlatformIconifyWindow(_GLFWwindow* window)

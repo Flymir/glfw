@@ -1,7 +1,7 @@
 //========================================================================
-// GLFW 3.1 OS X - www.glfw.org
+// GLFW 3.1 WinMM - www.glfw.org
 //------------------------------------------------------------------------
-// Copyright (c) 2009-2010 Camilla Berglund <elmindreda@elmindreda.org>
+// Copyright (c) 2006-2014 Camilla Berglund <elmindreda@elmindreda.org>
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -24,13 +24,11 @@
 //
 //========================================================================
 
-#ifndef _nsgl_platform_h_
-#define _nsgl_platform_h_
+#ifndef _winmm_joystick_h_
+#define _winmm_joystick_h_
 
-
-#define _GLFW_PLATFORM_FBCONFIG
-#define _GLFW_PLATFORM_CONTEXT_STATE        _GLFWcontextNSGL nsgl
-#define _GLFW_PLATFORM_LIBRARY_OPENGL_STATE _GLFWlibraryNSGL nsgl
+#define _GLFW_PLATFORM_LIBRARY_JOYSTICK_STATE \
+    _GLFWjoystickWinMM winmm_js[GLFW_JOYSTICK_LAST + 1]
 
 
 //========================================================================
@@ -38,38 +36,21 @@
 //========================================================================
 
 //------------------------------------------------------------------------
-// Platform-specific OpenGL context structure
+// Platform-specific joystick structure
 //------------------------------------------------------------------------
-typedef struct _GLFWcontextNSGL
+typedef struct _GLFWjoystickWinMM
 {
-    id           pixelFormat;
-    id	         context;
-} _GLFWcontextNSGL;
-
-
-//------------------------------------------------------------------------
-// Platform-specific library global data for NSGL
-//------------------------------------------------------------------------
-typedef struct _GLFWlibraryNSGL
-{
-    // dlopen handle for dynamically loading OpenGL extension entry points
-    void*           framework;
-
-    // TLS key for per-thread current context/window
-    pthread_key_t   current;
-
-} _GLFWlibraryNSGL;
+    float           axes[6];
+    unsigned char   buttons[36]; // 32 buttons plus one hat
+    char*           name;
+} _GLFWjoystickWinMM;
 
 
 //========================================================================
 // Prototypes for platform specific internal functions
 //========================================================================
 
-int _glfwInitContextAPI(void);
-void _glfwTerminateContextAPI(void);
-int _glfwCreateContext(_GLFWwindow* window,
-                       const _GLFWctxconfig* ctxconfig,
-                       const _GLFWfbconfig* fbconfig);
-void _glfwDestroyContext(_GLFWwindow* window);
+void _glfwInitJoysticks(void);
+void _glfwTerminateJoysticks(void);
 
-#endif // _nsgl_platform_h_
+#endif // _winmm_joystick_h_

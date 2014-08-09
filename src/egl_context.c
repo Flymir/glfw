@@ -32,22 +32,6 @@
 #include <assert.h>
 
 
-// Thread local storage attribute macro
-//
-#if defined(_MSC_VER)
- #define _GLFW_TLS __declspec(thread)
-#elif defined(__GNUC__)
- #define _GLFW_TLS __thread
-#else
- #define _GLFW_TLS
-#endif
-
-
-// The per-thread current context/window pointer
-//
-static _GLFW_TLS _GLFWwindow* _glfwCurrentWindow = NULL;
-
-
 // Return a description of the specified EGL error
 //
 static const char* getErrorString(EGLint error)
@@ -183,6 +167,7 @@ static GLboolean chooseFBConfigs(const _GLFWctxconfig* ctxconfig,
         u->stencilBits = getConfigAttrib(n, EGL_STENCIL_SIZE);
 
         u->samples = getConfigAttrib(n, EGL_SAMPLES);
+        u->doublebuffer = GL_TRUE;
 
         u->egl = n;
         usableCount++;
@@ -207,6 +192,9 @@ static GLboolean chooseFBConfigs(const _GLFWctxconfig* ctxconfig,
 //
 int _glfwInitContextAPI(void)
 {
+    if (!_glfwInitTLS())
+        return GL_FALSE;
+
     _glfw.egl.display = eglGetDisplay((EGLNativeDisplayType)_GLFW_EGL_NATIVE_DISPLAY);
     if (_glfw.egl.display == EGL_NO_DISPLAY)
     {
@@ -237,6 +225,8 @@ int _glfwInitContextAPI(void)
 void _glfwTerminateContextAPI(void)
 {
     eglTerminate(_glfw.egl.display);
+
+    _glfwTerminateTLS();
 }
 
 #define setEGLattrib(attribName, attribValue) \
@@ -482,12 +472,7 @@ void _glfwPlatformMakeContextCurrent(_GLFWwindow* window)
                        EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
 
-    _glfwCurrentWindow = window;
-}
-
-_GLFWwindow* _glfwPlatformGetCurrentContext(void)
-{
-    return _glfwCurrentWindow;
+    _glfwSetCurrentContext(window);
 }
 
 void _glfwPlatformSwapBuffers(_GLFWwindow* window)

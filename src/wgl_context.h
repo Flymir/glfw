@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.1 EGL - www.glfw.org
+// GLFW 3.1 WGL - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2010 Camilla Berglund <elmindreda@elmindreda.org>
@@ -25,24 +25,17 @@
 //
 //========================================================================
 
-#ifndef _egl_platform_h_
-#define _egl_platform_h_
-
-#include <EGL/egl.h>
+#ifndef _wgl_context_h_
+#define _wgl_context_h_
 
 // This path may need to be changed if you build GLFW using your own setup
-// We ship and use our own copy of eglext.h since GLFW uses fairly new
+// We ship and use our own copy of wglext.h since GLFW uses fairly new
 // extensions and not all operating systems come with an up-to-date version
-#include "../deps/EGL/eglext.h"
+#include "../deps/GL/wglext.h"
 
-// Do we have support for dlopen/dlsym?
-#if defined(_GLFW_HAS_DLOPEN)
- #include <dlfcn.h>
-#endif
-
-#define _GLFW_PLATFORM_FBCONFIG             EGLConfig       egl
-#define _GLFW_PLATFORM_CONTEXT_STATE        _GLFWcontextEGL egl
-#define _GLFW_PLATFORM_LIBRARY_OPENGL_STATE _GLFWlibraryEGL egl
+#define _GLFW_PLATFORM_FBCONFIG                 int             wgl
+#define _GLFW_PLATFORM_CONTEXT_STATE            _GLFWcontextWGL wgl
+#define _GLFW_PLATFORM_LIBRARY_CONTEXT_STATE    _GLFWlibraryWGL wgl
 
 
 //========================================================================
@@ -52,29 +45,40 @@
 //------------------------------------------------------------------------
 // Platform-specific OpenGL context structure
 //------------------------------------------------------------------------
-typedef struct _GLFWcontextEGL
+typedef struct _GLFWcontextWGL
 {
-   EGLConfig      config;
-   EGLContext     context;
-   EGLSurface     surface;
+    // Platform specific window resources
+    HDC       dc;              // Private GDI device context
+    HGLRC     context;         // Permanent rendering context
 
-#if defined(_GLFW_X11)
-   XVisualInfo*   visual;
-#endif
-} _GLFWcontextEGL;
+    // Platform specific extensions (context specific)
+    PFNWGLSWAPINTERVALEXTPROC           SwapIntervalEXT;
+    PFNWGLGETPIXELFORMATATTRIBIVARBPROC GetPixelFormatAttribivARB;
+    PFNWGLGETEXTENSIONSSTRINGEXTPROC    GetExtensionsStringEXT;
+    PFNWGLGETEXTENSIONSSTRINGARBPROC    GetExtensionsStringARB;
+    PFNWGLCREATECONTEXTATTRIBSARBPROC   CreateContextAttribsARB;
+    GLboolean                           EXT_swap_control;
+    GLboolean                           ARB_multisample;
+    GLboolean                           ARB_framebuffer_sRGB;
+    GLboolean                           ARB_pixel_format;
+    GLboolean                           ARB_create_context;
+    GLboolean                           ARB_create_context_profile;
+    GLboolean                           EXT_create_context_es2_profile;
+    GLboolean                           ARB_create_context_robustness;
+} _GLFWcontextWGL;
 
 
 //------------------------------------------------------------------------
-// Platform-specific library global data for EGL
+// Platform-specific library global data for WGL
 //------------------------------------------------------------------------
-typedef struct _GLFWlibraryEGL
+typedef struct _GLFWlibraryWGL
 {
-    EGLDisplay      display;
-    EGLint          versionMajor, versionMinor;
+    // opengl32.dll
+    struct {
+        HINSTANCE   instance;
+    } opengl32;
 
-    GLboolean       KHR_create_context;
-
-} _GLFWlibraryEGL;
+} _GLFWlibraryWGL;
 
 
 //========================================================================
@@ -91,4 +95,4 @@ int _glfwAnalyzeContext(const _GLFWwindow* window,
                         const _GLFWctxconfig* ctxconfig,
                         const _GLFWfbconfig* fbconfig);
 
-#endif // _egl_platform_h_
+#endif // _wgl_context_h_

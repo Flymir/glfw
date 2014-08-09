@@ -231,8 +231,8 @@ static int translateKey(WPARAM wParam, LPARAM lParam)
         case 0x2E:             return GLFW_KEY_C;
         case 0x2F:             return GLFW_KEY_V;
         case 0x30:             return GLFW_KEY_B;
-        case 0x31:             return GLFW_KEY_M;
-        case 0x32:             return GLFW_KEY_N;
+        case 0x31:             return GLFW_KEY_N;
+        case 0x32:             return GLFW_KEY_M;
         case 0x33:             return GLFW_KEY_COMMA;
         case 0x34:             return GLFW_KEY_PERIOD;
         case 0x35:             return GLFW_KEY_SLASH;
@@ -396,7 +396,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
 
     switch (uMsg)
     {
-        case WM_CREATE:
+        case WM_NCCREATE:
         {
             CREATESTRUCTW* cs = (CREATESTRUCTW*) lParam;
             SetWindowLongPtrW(hWnd, 0, (LONG_PTR) cs->lpCreateParams);
@@ -436,7 +436,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
                 if (window->cursorMode != GLFW_CURSOR_NORMAL)
                     restoreCursor(window);
 
-                if (window->monitor)
+                if (window->monitor && window->autoIconify)
                 {
                     if (!iconified)
                     {
@@ -455,7 +455,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
                 if (window->cursorMode != GLFW_CURSOR_NORMAL)
                     _glfwPlatformApplyCursorMode(window);
 
-                if (window->monitor)
+                if (window->monitor && window->autoIconify)
                     _glfwSetVideoMode(window->monitor, &window->videoMode);
             }
 
@@ -516,7 +516,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
         case WM_KEYDOWN:
         case WM_SYSKEYDOWN:
         {
-            const int scancode = (lParam >> 16) & 0xff;
+            const int scancode = (lParam >> 16) & 0x1ff;
             const int key = translateKey(wParam, lParam);
             if (key == _GLFW_KEY_INVALID)
                 break;
@@ -526,9 +526,14 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
         }
 
         case WM_CHAR:
+        {
+            _glfwInputChar(window, (unsigned int) wParam, getKeyMods(), GL_TRUE);
+            return 0;
+        }
+
         case WM_SYSCHAR:
         {
-            _glfwInputChar(window, (unsigned int) wParam);
+            _glfwInputChar(window, (unsigned int) wParam, getKeyMods(), GL_FALSE);
             return 0;
         }
 
@@ -543,7 +548,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
                 return TRUE;
             }
 
-            _glfwInputChar(window, (unsigned int) wParam);
+            _glfwInputChar(window, (unsigned int) wParam, getKeyMods(), GL_TRUE);
             return FALSE;
         }
 
@@ -551,7 +556,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
         case WM_SYSKEYUP:
         {
             const int mods = getKeyMods();
-            const int scancode = (lParam >> 16) & 0xff;
+            const int scancode = (lParam >> 16) & 0x1ff;
             const int key = translateKey(wParam, lParam);
             if (key == _GLFW_KEY_INVALID)
                 break;
@@ -731,6 +736,11 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg,
         {
             _glfwInputWindowDamage(window);
             break;
+        }
+
+        case WM_ERASEBKGND:
+        {
+            return TRUE;
         }
 
         case WM_SETCURSOR:
@@ -930,23 +940,31 @@ static int createWindow(_GLFWwindow* window,
 
     free(wideTitle);
 
-    if (_glfw_ChangeWindowMessageFilterEx)
-    {
-        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
-                                        WM_DROPFILES, MSGFLT_ALLOW, NULL);
-        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
-                                        WM_COPYDATA, MSGFLT_ALLOW, NULL);
-        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
-                                        WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
-    }
-
-    DragAcceptFiles(window->win32.handle, TRUE);
-
     if (!window->win32.handle)
     {
         _glfwInputError(GLFW_PLATFORM_ERROR, "Win32: Failed to create window");
         return GL_FALSE;
     }
+
+    if (_glfw_ChangeWindowMessageFilterEx)
+    {
+        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
+                                          WM_DROPFILES, MSGFLT_ALLOW, NULL);
+        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
+                                          WM_COPYDATA, MSGFLT_ALLOW, NULL);
+        _glfw_ChangeWindowMessageFilterEx(window->win32.handle,
+                                          WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
+    }
+
+    if (wndconfig->floating && !wndconfig->monitor)
+    {
+        SetWindowPos(window->win32.handle,
+                        HWND_TOPMOST,
+                        0, 0, 0, 0,
+                        SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
+    }
+
+    DragAcceptFiles(window->win32.handle, TRUE);
 
     if (!_glfwCreateContext(window, ctxconfig, fbconfig))
         return GL_FALSE;
@@ -1120,6 +1138,28 @@ void _glfwPlatformGetFramebufferSize(_GLFWwindow* window, int* width, int* heigh
     _glfwPlatformGetWindowSize(window, width, height);
 }
 
+void _glfwPlatformGetWindowFrameSize(_GLFWwindow* window,
+                                     int* left, int* top,
+                                     int* right, int* bottom)
+{
+    RECT rect;
+    int width, height;
+
+    _glfwPlatformGetWindowSize(window, &width, &height);
+    SetRect(&rect, 0, 0, width, height);
+    AdjustWindowRectEx(&rect, window->win32.dwStyle,
+                       FALSE, window->win32.dwExStyle);
+
+    if (left)
+        *left = -rect.left;
+    if (top)
+        *top = -rect.top;
+    if (right)
+        *right = rect.right - width;
+    if (bottom)
+        *bottom = rect.bottom - height;
+}
+
 void _glfwPlatformIconifyWindow(_GLFWwindow* window)
 {
     ShowWindow(window->win32.handle, SW_MINIMIZE);
@@ -1132,7 +1172,7 @@ void _glfwPlatformRestoreWindow(_GLFWwindow* window)
 
 void _glfwPlatformShowWindow(_GLFWwindow* window)
 {
-    ShowWindow(window->win32.handle, SW_SHOWNORMAL);
+    ShowWindow(window->win32.handle, SW_SHOW);
     BringWindowToTop(window->win32.handle);
     SetForegroundWindow(window->win32.handle);
     SetFocus(window->win32.handle);
@@ -1183,10 +1223,10 @@ void _glfwPlatformPollEvents(void)
 
             // See if this differs from our belief of what has happened
             // (we only have to check for lost key up events)
-            if (!lshiftDown && window->key[GLFW_KEY_LEFT_SHIFT] == 1)
+            if (!lshiftDown && window->keys[GLFW_KEY_LEFT_SHIFT] == 1)
                 _glfwInputKey(window, GLFW_KEY_LEFT_SHIFT, 0, GLFW_RELEASE, mods);
 
-            if (!rshiftDown && window->key[GLFW_KEY_RIGHT_SHIFT] == 1)
+            if (!rshiftDown && window->keys[GLFW_KEY_RIGHT_SHIFT] == 1)
                 _glfwInputKey(window, GLFW_KEY_RIGHT_SHIFT, 0, GLFW_RELEASE, mods);
         }
 

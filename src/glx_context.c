@@ -85,10 +85,9 @@ static GLboolean chooseFBConfig(const _GLFWfbconfig* desired, GLXFBConfig* resul
         const GLXFBConfig n = nativeConfigs[i];
         _GLFWfbconfig* u = usableConfigs + usableCount;
 
-        if (!getFBConfigAttrib(n, GLX_DOUBLEBUFFER) ||
-            !getFBConfigAttrib(n, GLX_VISUAL_ID))
+        if (!getFBConfigAttrib(n, GLX_VISUAL_ID))
         {
-            // Only consider double-buffered GLXFBConfigs with associated visuals
+            // Only consider GLXFBConfigs with associated visuals
             continue;
         }
 
@@ -121,7 +120,11 @@ static GLboolean chooseFBConfig(const _GLFWfbconfig* desired, GLXFBConfig* resul
         u->accumAlphaBits = getFBConfigAttrib(n, GLX_ACCUM_ALPHA_SIZE);
 
         u->auxBuffers = getFBConfigAttrib(n, GLX_AUX_BUFFERS);
-        u->stereo = getFBConfigAttrib(n, GLX_STEREO);
+
+        if (getFBConfigAttrib(n, GLX_STEREO))
+            u->stereo = GL_TRUE;
+        if (getFBConfigAttrib(n, GLX_DOUBLEBUFFER))
+            u->doublebuffer = GL_TRUE;
 
         if (_glfw.glx.ARB_multisample)
             u->samples = getFBConfigAttrib(n, GLX_SAMPLES);
@@ -165,24 +168,11 @@ static GLXContext createLegacyContext(_GLFWwindow* window,
 //
 int _glfwInitContextAPI(void)
 {
+    if (!_glfwInitTLS())
+        return GL_FALSE;
+
 #ifdef _GLFW_DLOPEN_LIBGL
-    int i;
-    char* libGL_names[ ] =
-    {
-        "libGL.so",
-        "libGL.so.1",
-        "/usr/lib/libGL.so",
-        "/usr/lib/libGL.so.1",
-        NULL
-    };
-
-    for (i = 0;  libGL_names[i] != NULL;  i++)
-    {
-        _glfw.glx.libGL = dlopen(libGL_names[i], RTLD_LAZY | RTLD_GLOBAL);
-        if (_glfw.glx.libGL)
-            break;
-    }
-
+    _glfw.glx.libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_GLOBAL);
     if (!_glfw.glx.libGL)
     {
         _glfwInputError(GLFW_PLATFORM_ERROR, "GLX: Failed to find libGL");
@@ -190,19 +180,11 @@ int _glfwInitContextAPI(void)
     }
 #endif
 
-    if (pthread_key_create(&_glfw.glx.current, NULL) != 0)
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "GLX: Failed to create context TLS");
-        return GL_FALSE;
-    }
-
-    // Check if GLX is supported on this display
     if (!glXQueryExtension(_glfw.x11.display,
                            &_glfw.glx.errorBase,
                            &_glfw.glx.eventBase))
     {
-        _glfwInputError(GLFW_API_UNAVAILABLE, "GLX: GLX support not found");
+        _glfwInputError(GLFW_API_UNAVAILABLE, "GLX: GLX extension not found");
         return GL_FALSE;
     }
 
@@ -212,6 +194,13 @@ int _glfwInitContextAPI(void)
     {
         _glfwInputError(GLFW_API_UNAVAILABLE,
                         "GLX: Failed to query GLX version");
+        return GL_FALSE;
+    }
+
+    if (_glfw.glx.versionMajor == 1 && _glfw.glx.versionMinor < 3)
+    {
+        _glfwInputError(GLFW_API_UNAVAILABLE,
+                        "GLX: GLX version 1.3 is required");
         return GL_FALSE;
     }
 
@@ -266,12 +255,6 @@ int _glfwInitContextAPI(void)
     if (_glfwPlatformExtensionSupported("GLX_EXT_create_context_es2_profile"))
         _glfw.glx.EXT_create_context_es2_profile = GL_TRUE;
 
-    if (_glfw.glx.versionMajor == 1 && _glfw.glx.versionMinor < 3)
-    {
-        _glfwInputError(GLFW_API_UNAVAILABLE, "No GLXFBConfig support found");
-        return GL_FALSE;
-    }
-
     return GL_TRUE;
 }
 
@@ -288,7 +271,7 @@ void _glfwTerminateContextAPI(void)
     }
 #endif
 
-    pthread_key_delete(_glfw.glx.current);
+    _glfwTerminateTLS();
 }
 
 #define setGLXattrib(attribName, attribValue) \
@@ -494,12 +477,7 @@ void _glfwPlatformMakeContextCurrent(_GLFWwindow* window)
     else
         glXMakeCurrent(_glfw.x11.display, None, NULL);
 
-    pthread_setspecific(_glfw.glx.current, window);
-}
-
-_GLFWwindow* _glfwPlatformGetCurrentContext(void)
-{
-    return (_GLFWwindow*) pthread_getspecific(_glfw.glx.current);
+    _glfwSetCurrentContext(window);
 }
 
 void _glfwPlatformSwapBuffers(_GLFWwindow* window)

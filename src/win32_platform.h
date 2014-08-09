@@ -62,14 +62,14 @@
  #define _WIN32_WINNT 0x0501
 #endif
 
+#include <windows.h>
+#include <mmsystem.h>
+#include <dbt.h>
+
 #if defined(_MSC_VER)
  #include <malloc.h>
  #define strdup _strdup
 #endif
-
-#include <windows.h>
-#include <mmsystem.h>
-#include <dbt.h>
 
 
 //========================================================================
@@ -151,18 +151,23 @@ typedef HRESULT (WINAPI * DWMISCOMPOSITIONENABLED_T)(BOOL*);
 #define _GLFW_RECREATION_IMPOSSIBLE 2
 
 
+#include "win32_tls.h"
+
 #if defined(_GLFW_WGL)
- #include "wgl_platform.h"
+ #include "wgl_context.h"
 #elif defined(_GLFW_EGL)
  #define _GLFW_EGL_NATIVE_WINDOW  window->win32.handle
  #define _GLFW_EGL_NATIVE_DISPLAY EGL_DEFAULT_DISPLAY
- #include "egl_platform.h"
+ #include "egl_context.h"
 #else
  #error "No supported context creation API selected"
 #endif
 
+#include "winmm_joystick.h"
+
 #define _GLFW_PLATFORM_WINDOW_STATE         _GLFWwindowWin32  win32
 #define _GLFW_PLATFORM_LIBRARY_WINDOW_STATE _GLFWlibraryWin32 win32
+#define _GLFW_PLATFORM_LIBRARY_TIME_STATE   _GLFWtimeWin32    win32_time
 #define _GLFW_PLATFORM_MONITOR_STATE        _GLFWmonitorWin32 win32
 #define _GLFW_PLATFORM_CURSOR_STATE         _GLFWcursorWin32  win32
 
@@ -199,13 +204,6 @@ typedef struct _GLFWlibraryWin32
     DWORD               foregroundLockTimeout;
     char*               clipboardString;
 
-    // Timer data
-    struct {
-        GLboolean       hasPC;
-        double          resolution;
-        unsigned __int64 base;
-    } timer;
-
 #ifndef _GLFW_NO_DLOAD_WINMM
     // winmm.dll
     struct {
@@ -230,11 +228,6 @@ typedef struct _GLFWlibraryWin32
         DWMISCOMPOSITIONENABLED_T DwmIsCompositionEnabled;
     } dwmapi;
 
-    struct {
-        float           axes[6];
-        unsigned char   buttons[36]; // 32 buttons plus one hat
-        char*           name;
-    } joystick[GLFW_JOYSTICK_LAST + 1];
 
 } _GLFWlibraryWin32;
 
@@ -260,6 +253,18 @@ typedef struct _GLFWcursorWin32
 } _GLFWcursorWin32;
 
 
+//------------------------------------------------------------------------
+// Platform-specific time structure
+//------------------------------------------------------------------------
+typedef struct _GLFWtimeWin32
+{
+    GLboolean           hasPC;
+    double              resolution;
+    unsigned __int64    base;
+
+} _GLFWtimeWin32;
+
+
 //========================================================================
 // Prototypes for platform specific internal functions
 //========================================================================
@@ -273,10 +278,6 @@ char* _glfwCreateUTF8FromWideString(const WCHAR* source);
 
 // Time
 void _glfwInitTimer(void);
-
-// Joystick input
-void _glfwInitJoysticks(void);
-void _glfwTerminateJoysticks(void);
 
 // Fullscreen support
 GLboolean _glfwSetVideoMode(_GLFWmonitor* monitor, const GLFWvidmode* desired);
