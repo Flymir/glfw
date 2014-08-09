@@ -1,7 +1,7 @@
 --- This file is part of Flymir LuaDist project
 
 name = "glfw"
-version = "3.0.4"
+version = "scm"
 
 desc = "A multi-platform library for OpenGL, window and input"
 author = "Camilla Berglund"
